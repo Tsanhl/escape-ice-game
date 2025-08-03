@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Escape the Ice Game</title>
+  <style>
+    body { font-family: monospace; text-align: center; margin:0; padding:0; background: #f8fafc;}
+    h1 { margin-top: 24px;}
+    table { border-collapse: collapse; margin:24px auto 12px;}
+    td { width:40px; height:40px; text-align:center; font-size:24px; border:1px solid #cbd5e1; transition: background 0.2s;}
+    .wall { background:#334155; color:#334155;}
+    .empty{ background:#fff;}
+    .ice  { background:#bae6fd;}
+    .player{background:#22c55e; color:#fff;}
+    .exit{background:#fde68a; color:#000;}
+    #instructions{margin:10px;}
+    #message{font-size:24px; margin:18px;}
+    .game-over{color:#ef4444;}
+    .success{color:#22c55e;}
+    @media (max-width: 600px) {
+      td { width:32px; height:32px; font-size:18px;}
+      table { margin: 10px auto;}
+      h1 { font-size: 1.2em;}
+    }
+  </style>
+</head>
+<body>
+  <h1>Escape the Ice</h1>
+  <table id="grid"></table>
+  <p id="instructions">Use arrow keys or <b>swipe</b> up/down/left/right.<br/>Avoid the spreading ice!</p>
+  <p id="message"></p>
+  <script>
+    function generateGrid() {
+      const base = [
+        ['.', '.', '.', '.', '.', '.', '.', '.', '#', '.'],
+        ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+        ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+        ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+        ['#', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+        ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+        ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+        ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+        ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+        ['.', '.', '.', '.', '.', '#', '.', '.', '.', '.']
+      ];
+      const R = base.length, C = base[0].length;
+      const count = Math.floor(Math.random()*3)+3;
+      let pos = [];
+      for (let r=0;r<R;r++) for (let c=Math.floor(C/2);c<C;c++){
+        if (base[r][c]==='.' && !(r===0&&c===0) && !(r===0&&c===C-1) && !(r<3&&c<3))
+          pos.push([r,c]);
+      }
+      pos.sort(()=>Math.random()-0.5);
+      for (let i=0;i<Math.min(count,pos.length);i++){
+        const [r,c]=pos[i]; base[r][c]='I';
+      }
+      return base;
+    }
+
+    function computeIceTimes(grid, interval) {
+      const R=grid.length, C=grid[0].length;
+      const dirs=[[-1,0],[1,0],[0,-1],[0,1]];
+      const time=Array.from({length:R},()=>Array(C).fill(Infinity));
+      let q=[];
+      for (let r=0;r<R;r++) for (let c=0;c<C;c++){
+        if (grid[r][c]==='I'){ time[r][c]=0; q.push([r,c,0]); }
+      }
+      while(q.length){
+        const [r,c,t]=q.shift();
+        const ds=dirs.slice().sort(()=>Math.random()-0.5);
+        const n=Math.floor(Math.random()*3)+1;
+        for (let i=0;i<n;i++){
+          const [dr,dc]=ds[i], nr=r+dr, nc=c+dc;
+          if (nr>=0&&nr<R&&nc>=0&&nc<C&& grid[nr][nc]!=='#' && time[nr][nc]>t+interval){
+            time[nr][nc]=t+interval;
+            q.push([nr,nc,t+interval]);
+          }
+        }
+      }
+      return time;
+    }
+
+    function findShortestSafe(grid, iceTime) {
+      const R=grid.length, C=grid[0].length;
+      const vis=Array.from({length:R},()=>Array(C).fill(false));
+      let q=[[0,0,0]];
+      vis[0][0]=true;
+      while(q.length){
+        const [r,c,s]=q.shift();
+        if (r===0&&c===C-1) return s;
+        for (const [dr,dc] of [[-1,0],[1,0],[0,-1],[0,1]]){
+          const nr=r+dr, nc=c+dc;
+          if (nr>=0&&nr<R&&nc>=0&&nc<C && !vis[nr][nc] && grid[nr][nc]!=='#' && s+1<iceTime[nr][nc]){
+            vis[nr][nc]=true;
+            q.push([nr,nc,s+1]);
+          }
+        }
+      }
+      return null;
+    }
+
+    function generateBalanced(grid) {
+      let interval=3, iceTime, best;
+      while (true) {
+        iceTime = computeIceTimes(grid, interval);
+        best = findShortestSafe(grid, iceTime);
+        if (best !== null && best < 15) break;
+        interval++;
+      }
+      return {iceTime, interval};
+    }
+
+    function initGame() {
+      const grid = generateGrid();
+      const R = grid.length, C = grid[0].length;
+      const {iceTime} = generateBalanced(grid);
+
+      const table = document.getElementById('grid');
+      const msg   = document.getElementById('message');
+      let pr=0, pc=0, steps=0;
+      let gameOver = false;
+
+      function render() {
+        table.innerHTML = '';
+        for (let r=0;r<R;r++){
+          const tr = document.createElement('tr');
+          for (let c=0;c<C;c++){
+            const td = document.createElement('td');
+            if (r===pr&&c===pc) {
+              td.classList.add('player'); td.textContent='P';
+            }
+            else if (r===0&&c===C-1) {
+              td.classList.add('exit'); td.textContent='E';
+            }
+            else if (grid[r][c]==='#') td.classList.add('wall');
+            else if (iceTime[r][c]<=steps) td.classList.add('ice');
+            else td.classList.add('empty');
+            tr.appendChild(td);
+          }
+          table.appendChild(tr);
+        }
+      }
+
+      function end(won){
+        gameOver = true;
+        document.removeEventListener('keydown', keyHandler);
+        document.removeEventListener('touchstart', handleTouchStart);
+        document.removeEventListener('touchend', handleTouchEnd);
+        if (won) {
+          msg.innerText=`🎉 You escaped in ${steps} steps!`;
+          msg.className='success';
+        } else {
+          msg.innerText='💀 You froze! Game over.';
+          msg.className='game-over';
+        }
+        const restart = ()=>window.location.reload();
+        document.addEventListener('keydown', restart, {once:true});
+        document.addEventListener('click', restart, {once:true});
+        document.addEventListener('touchstart', restart, {once:true});
+      }
+
+      function move(dir) {
+        if (gameOver) return;
+        const dirMap = {up:[-1,0], down:[1,0], left:[0,-1], right:[0,1]};
+        const [dr,dc] = dirMap[dir];
+        const nr=pr+dr, nc=pc+dc;
+        if (nr<0||nr>=R||nc<0||nc>=C||grid[nr][nc]==='#') return;
+        const ns=steps+1;
+        if (ns>=iceTime[nr][nc]) { end(false); return; }
+        pr=nr; pc=nc; steps=ns;
+        render();
+        if (pr===0&&pc===C-1) end(true);
+      }
+
+      function keyHandler(e){
+        if (e.key==='ArrowUp') move('up');
+        else if (e.key==='ArrowDown') move('down');
+        else if (e.key==='ArrowLeft') move('left');
+        else if (e.key==='ArrowRight') move('right');
+      }
+
+      // Touch swipe detection for mobile
+      let startX=0, startY=0;
+      function handleTouchStart(e){
+        if (e.touches.length===1) {
+          startX = e.touches[0].clientX;
+          startY = e.touches[0].clientY;
+        }
+      }
+      function handleTouchEnd(e){
+        if (gameOver) return;
+        if (!startX && !startY) return;
+        let endX = e.changedTouches[0].clientX;
+        let endY = e.changedTouches[0].clientY;
+        let dx = endX - startX, dy = endY - startY;
+        if (Math.abs(dx) < 20 && Math.abs(dy) < 20) return; // Ignore tap
+        if (Math.abs(dx) > Math.abs(dy)) {
+          if (dx > 0) move('right'); else move('left');
+        } else {
+          if (dy > 0) move('down'); else move('up');
+        }
+        startX = startY = 0;
+      }
+
+      if (iceTime[0][0] <= 0) {
+        msg.innerText='💀 Frozen at start!';
+        msg.className='game-over';
+        const restart = ()=>window.location.reload();
+        document.addEventListener('keydown', restart, {once:true});
+        document.addEventListener('click', restart, {once:true});
+      } else {
+        render();
+        document.addEventListener('keydown', keyHandler);
+        // Enable swipe gesture
+        document.addEventListener('touchstart', handleTouchStart, {passive:true});
+        document.addEventListener('touchend', handleTouchEnd, {passive:true});
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', initGame);
+  </script>
+</body>
+</html>
